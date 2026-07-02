@@ -6,8 +6,8 @@
 html, body {
   height: 100%;
   margin: 0;
-  background: #14202b;
-  color: #eaf6ff;
+  background: #000000;
+  color: #f2f2f2;
   font-family: "Segoe UI", system-ui, sans-serif;
   overflow: hidden;
 }
@@ -23,14 +23,14 @@ html, body {
 }
 
 #game-canvas {
-  background: #1b5e7d;
+  background: #000000;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   height: 100vh;
   max-width: 100vw;
   width: auto;
   aspect-ratio: 240 / 360;
-  border: 2px solid #0a1620;
+  border: 2px solid #f2f2f2;
 }
 
 #hud {
@@ -43,7 +43,9 @@ html, body {
   padding: 0 16px;
   font-size: 14px;
   font-weight: bold;
-  text-shadow: 1px 1px 2px #000;
+  letter-spacing: 0.5px;
+  color: #f2f2f2;
+  text-shadow: 1px 1px 0 #000;
   pointer-events: none;
 }
 
@@ -55,7 +57,7 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: rgba(10, 22, 32, 0.85);
+  background: rgba(0, 0, 0, 0.9);
   text-align: center;
   padding: 16px;
 }
@@ -66,24 +68,31 @@ html, body {
 
 #game-over-screen h1 {
   margin: 0;
-  font-size: 28px;
+  font-size: 24px;
+  color: #f2f2f2;
 }
 
 #restart-button {
   margin-top: 12px;
   padding: 10px 16px;
   font-size: 14px;
-  background: #2d8f5f;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
+  background: transparent;
+  color: #f2f2f2;
+  border: 2px solid #f2f2f2;
+  border-radius: 0;
   cursor: pointer;
+}
+
+#restart-button:hover {
+  background: #f2f2f2;
+  color: #000000;
 }
 
 #touch-controls {
   position: absolute;
   inset: 0;
   display: flex;
+  flex-direction: column;
 }
 
 .touch-zone {
