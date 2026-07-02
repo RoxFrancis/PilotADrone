@@ -24,11 +24,11 @@ After a few seconds, open `http://localhost:3000` in your browser to play. When 
 docker compose down
 ```
 
-Without Docker, serve the `src/` folder with any static file server, e.g.:
+Without Docker, serve the repo root with any static file server, e.g.:
 ```
-cd src && python3 -m http.server 8080
+python3 -m http.server 8080
 ```
 
 ## Deploy
 
-Pushing to `main` triggers `.github/workflows/deploy.yml`, which publishes `src/` to GitHub Pages automatically.
+Pushing to `main` triggers `.github/workflows/deploy.yml`, which publishes the repo to GitHub Pages automatically.
