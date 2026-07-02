@@ -1,37 +1,18 @@
 # Project Context
 
-## Biological question
-- Main question or hypothesis:
-- Biological system:
-- Spatial, temporal, experimental, or observational scale:
-- Key biological assumptions:
+# preferences
+- deploy to git hub pages
 
-## Data
-- Files:
-- Important columns:
-- Known quirks:
-- Missing data, sampling bias, or measurement issues:
 
-## Analysis goals
-- Primary outputs:
-- Secondary or exploratory outputs:
-- Decisions still needing team/supervisor agreement:
+We want to create a simple game in 2D. It will have multiple levels, each level is a more and more regulated river. to start with lets just do one level. i am a fish moving through a river that has some barriers like logs. in level 1 the fish. fish moves automatically forward and we use the left and right arrows to avoid the barriers. This first version can be very simple and pixelated. the point of view would be from above as if im looking down on the river.
 
 ## Planned workflow
 1.
 2.
 3.
 
-## Coding preferences
-- Use tidyverse style.
-- Use project-relative paths (from the project root).
-- Explain assumptions.
 
 ## Current status
+presently we havent decided on a textstack , fine scale features or the gameplay. we want to start scaffolding the project and repo and discuss some options for deployment and setup.
 
-## Verification checks
 
-## Things not to do
-- Do not treat uncertain biological assumptions as settled.
-- Do not overwrite raw data.
-- Do not make major analysis decisions without recording the reasoning.
