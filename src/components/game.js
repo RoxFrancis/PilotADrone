@@ -6,6 +6,7 @@
   const scoreEl = document.getElementById("score");
   const bestEl = document.getElementById("best");
   const gameOverScreen = document.getElementById("game-over-screen");
+  const pauseScreen = document.getElementById("pause-screen");
   const finalScoreEl = document.getElementById("final-score");
   const gameOverTitle = document.getElementById("game-over-title");
   const restartButton = document.getElementById("restart-button");
@@ -45,6 +46,12 @@
   const EAGLE_BOB_FREQUENCY = 2.4; // radians/sec
   const EAGLE_PIXEL = 2;
 
+  const MARSUPIAL_PIXEL = 2;
+  const MARSUPIAL_MIN_INTERVAL = 5000; // ms
+  const MARSUPIAL_MAX_INTERVAL = 9000; // ms
+  const PHOTO_BONUS = 50;
+  const PHOTO_TOLERANCE = 14; // px of extra horizontal leeway for "passing over"
+
   const BEST_SCORE_KEY = "droneGameBestScore";
 
   // Pixel-art sprites: each row is a string, "X" = filled pixel. Rows may
@@ -77,26 +84,10 @@
     ],
   ];
 
-  // Simplified side-view bird: a plain body silhouette with a beak, and a
-  // single wing that toggles between frames to read as a flap.
-  const EAGLE_FRAMES = [
-    [
-      "....XXX.........",
-      "...XXXXX........",
-      "XX.XXXXXXXXXXXX.",
-      "XXXXXXXXXXXXXXX.",
-      ".XXXXXXXXXXXXX..",
-      "....X.......X...",
-    ],
-    [
-      ".................",
-      "...XXX...........",
-      "XX.XXXXXXXXXXXX.",
-      "XXXXXXXXXXXXXXX.",
-      ".XXXXXXXXXXXXX..",
-      "....X.......X...",
-    ],
-  ];
+  // The bird is drawn procedurally (ellipse body/head + triangle
+  // beak/tail/wing) rather than as hand-typed pixel art - see drawBird().
+  const EAGLE_WIDTH = 40;
+  const EAGLE_HEIGHT = 22;
 
   // Static pilot: ponytail + head, arm extended holding a remote, dress
   // silhouette, legs. Drawn at a fixed screen position, never scrolls.
@@ -120,6 +111,21 @@
     ".XXX..XXX....",
   ];
 
+  // Ground-dwelling marsupial: ears, upright body, small forearms, a big
+  // hind leg + tail for balance, and a long tapering nose (bandicoot-style).
+  // Static, standing on the ground line.
+  const MARSUPIAL_FRAME = [
+    "......XX....",
+    ".....XXXX...",
+    "XXXXXXXXXXX.",
+    "..XXXXXXXXX.",
+    "..XXXXXXXXXX",
+    "...XXXXXXXXX",
+    "...XX...XX.X",
+    "...XX...XX.X",
+    "..XXX.XXX...",
+  ];
+
   function spriteWidth(frame, pixelSize) {
     return Math.max(...frame.map((row) => row.length)) * pixelSize;
   }
@@ -129,9 +135,10 @@
 
   const DRONE_WIDTH = spriteWidth(DRONE_FRAMES[0], DRONE_PIXEL);
   const DRONE_HEIGHT = spriteHeight(DRONE_FRAMES[0], DRONE_PIXEL);
-  const EAGLE_WIDTH = spriteWidth(EAGLE_FRAMES[0], EAGLE_PIXEL);
-  const EAGLE_HEIGHT = spriteHeight(EAGLE_FRAMES[0], EAGLE_PIXEL);
+  const PILOT_WIDTH = spriteWidth(PILOT_FRAME, PILOT_PIXEL);
   const PILOT_HEIGHT = spriteHeight(PILOT_FRAME, PILOT_PIXEL);
+  const MARSUPIAL_WIDTH = spriteWidth(MARSUPIAL_FRAME, MARSUPIAL_PIXEL);
+  const MARSUPIAL_HEIGHT = spriteHeight(MARSUPIAL_FRAME, MARSUPIAL_PIXEL);
 
   function drawPixelSprite(frame, x, y, pixelSize, color) {
     ctx.fillStyle = color;
@@ -167,6 +174,116 @@
     }
   }
 
+  function drawPixelEllipse(cx, cy, rx, ry, pixelSize, color) {
+    ctx.fillStyle = color;
+    const stepsX = Math.max(1, Math.round(rx / pixelSize));
+    const stepsY = Math.max(1, Math.round(ry / pixelSize));
+    for (let dy = -stepsY; dy <= stepsY; dy++) {
+      for (let dx = -stepsX; dx <= stepsX; dx++) {
+        if ((dx * dx) / (stepsX * stepsX) + (dy * dy) / (stepsY * stepsY) <= 1) {
+          ctx.fillRect(
+            Math.round(cx + dx * pixelSize - pixelSize / 2),
+            Math.round(cy + dy * pixelSize - pixelSize / 2),
+            pixelSize,
+            pixelSize
+          );
+        }
+      }
+    }
+  }
+
+  function triangleSign(px, py, ax, ay, bx, by) {
+    return (px - bx) * (ay - by) - (ax - bx) * (py - by);
+  }
+
+  function pointInTriangle(px, py, ax, ay, bx, by, cx, cy) {
+    const d1 = triangleSign(px, py, ax, ay, bx, by);
+    const d2 = triangleSign(px, py, bx, by, cx, cy);
+    const d3 = triangleSign(px, py, cx, cy, ax, ay);
+    const hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
+    const hasPos = d1 > 0 || d2 > 0 || d3 > 0;
+    return !(hasNeg && hasPos);
+  }
+
+  function drawPixelTriangle(ax, ay, bx, by, cx, cy, pixelSize, color) {
+    ctx.fillStyle = color;
+    const minX = Math.min(ax, bx, cx);
+    const maxX = Math.max(ax, bx, cx);
+    const minY = Math.min(ay, by, cy);
+    const maxY = Math.max(ay, by, cy);
+    for (let y = minY; y <= maxY; y += pixelSize) {
+      for (let x = minX; x <= maxX; x += pixelSize) {
+        const px = x + pixelSize / 2;
+        const py = y + pixelSize / 2;
+        if (pointInTriangle(px, py, ax, ay, bx, by, cx, cy)) {
+          ctx.fillRect(Math.round(x), Math.round(y), pixelSize, pixelSize);
+        }
+      }
+    }
+  }
+
+  // Side-view bird: round body, round head with a pointed beak facing its
+  // direction of travel (left), a tail point at the back, and a triangular
+  // wing on its back that swaps between two angles to read as a flap.
+  function drawBird(x, y, width, height, wingUp) {
+    const bodyCx = x + width * 0.58;
+    const bodyCy = y + height * 0.55;
+    const bodyRx = width * 0.3;
+    const bodyRy = height * 0.32;
+    drawPixelEllipse(bodyCx, bodyCy, bodyRx, bodyRy, EAGLE_PIXEL, WHITE);
+
+    const headCx = x + width * 0.22;
+    const headCy = y + height * 0.4;
+    const headR = height * 0.26;
+    drawPixelEllipse(headCx, headCy, headR, headR, EAGLE_PIXEL, WHITE);
+
+    drawPixelTriangle(
+      headCx - headR * 0.2,
+      headCy - headR * 0.5,
+      headCx - headR * 0.2,
+      headCy + headR * 0.5,
+      x - width * 0.05,
+      headCy,
+      EAGLE_PIXEL,
+      WHITE
+    );
+
+    drawPixelTriangle(
+      bodyCx + bodyRx * 0.5,
+      bodyCy - bodyRy * 0.6,
+      bodyCx + bodyRx * 0.5,
+      bodyCy + bodyRy * 0.6,
+      x + width,
+      bodyCy - bodyRy * 0.1,
+      EAGLE_PIXEL,
+      WHITE
+    );
+
+    if (wingUp) {
+      drawPixelTriangle(
+        bodyCx - bodyRx * 0.5,
+        bodyCy - bodyRy * 0.2,
+        bodyCx + bodyRx * 0.6,
+        bodyCy - bodyRy * 0.1,
+        bodyCx,
+        y,
+        EAGLE_PIXEL,
+        WHITE
+      );
+    } else {
+      drawPixelTriangle(
+        bodyCx - bodyRx * 0.4,
+        bodyCy - bodyRy * 0.1,
+        bodyCx + bodyRx * 0.5,
+        bodyCy - bodyRy * 0.1,
+        bodyCx + bodyRx * 0.1,
+        bodyCy - bodyRy * 0.9,
+        EAGLE_PIXEL,
+        WHITE
+      );
+    }
+  }
+
   function drawTree(tree) {
     const trunkX = tree.x - TREE_TRUNK_WIDTH / 2;
     const trunkY = GROUND_Y - tree.trunkHeight;
@@ -198,18 +315,26 @@
     );
   }
 
-  let state = "playing"; // "playing" | "gameover"
+  let state = "playing"; // "playing" | "paused" | "gameover"
   let droneY = HEIGHT / 2;
   let moveUp = false;
   let moveDown = false;
 
   let trees = [];
   let eagle = null;
+  let marsupials = [];
   let scrollSpeed = BASE_SCROLL_SPEED;
   let spawnTimer = 0;
   let eagleTimer = 3000;
+  let marsupialTimer = 1500;
+  let rightPressed = false;
+  let photoFlashTimer = 0;
+  let photoPopup = null;
+  let marsupialHintShown = false;
+  let marsupialHintTimer = 0;
   let elapsed = 0; // seconds survived
   let score = 0;
+  let bonusScore = 0;
   let bestScore = Number(localStorage.getItem(BEST_SCORE_KEY)) || 0;
   let animTimer = 0;
   let animFrame = 0;
@@ -223,21 +348,52 @@
     droneY = HEIGHT / 2;
     trees = [];
     eagle = null;
+    marsupials = [];
     scrollSpeed = BASE_SCROLL_SPEED;
     spawnTimer = 0;
     eagleTimer = 3000;
+    marsupialTimer = 1500;
+    photoFlashTimer = 0;
+    photoPopup = null;
+    marsupialHintShown = false;
+    marsupialHintTimer = 0;
     elapsed = 0;
     score = 0;
+    bonusScore = 0;
     scrollTickOffset = 0;
     lastHitBy = null;
     state = "playing";
     gameOverScreen.classList.add("hidden");
+    pauseScreen.classList.add("hidden");
   }
 
   function spawnTree() {
     const trunkHeight = 30 + Math.random() * 130;
     const canopyRadius = 14 + Math.random() * 12;
     trees.push({ x: WIDTH + canopyRadius, trunkHeight, canopyRadius });
+  }
+
+  function spawnMarsupial() {
+    marsupials.push({ x: WIDTH + MARSUPIAL_WIDTH, photographed: false });
+    if (!marsupialHintShown) {
+      marsupialHintShown = true;
+      marsupialHintTimer = 3.5;
+    }
+  }
+
+  function attemptPhoto() {
+    if (state !== "playing") return;
+    const droneLeft = DRONE_X - DRONE_WIDTH / 2 - PHOTO_TOLERANCE;
+    const droneRight = DRONE_X + DRONE_WIDTH / 2 + PHOTO_TOLERANCE;
+    const target = marsupials.find(
+      (m) => !m.photographed && droneLeft < m.x + MARSUPIAL_WIDTH && droneRight > m.x
+    );
+    if (target) {
+      target.photographed = true;
+      bonusScore += PHOTO_BONUS;
+      photoFlashTimer = 0.25;
+      photoPopup = { x: target.x, y: GROUND_Y - MARSUPIAL_HEIGHT - 10, timer: 1 };
+    }
   }
 
   function spawnEagle() {
@@ -303,6 +459,30 @@
       }
     }
 
+    // Spawn marsupial (only one active at a time)
+    if (marsupials.length === 0) {
+      marsupialTimer -= dt * 1000;
+      if (marsupialTimer <= 0) {
+        spawnMarsupial();
+        marsupialTimer =
+          MARSUPIAL_MIN_INTERVAL +
+          Math.random() * (MARSUPIAL_MAX_INTERVAL - MARSUPIAL_MIN_INTERVAL);
+      }
+    }
+
+    // Move marsupials, remove offscreen
+    for (const m of marsupials) {
+      m.x -= scrollSpeed * dt;
+    }
+    marsupials = marsupials.filter((m) => m.x + MARSUPIAL_WIDTH > 0);
+
+    if (photoFlashTimer > 0) photoFlashTimer = Math.max(0, photoFlashTimer - dt);
+    if (photoPopup) {
+      photoPopup.timer -= dt;
+      if (photoPopup.timer <= 0) photoPopup = null;
+    }
+    if (marsupialHintTimer > 0) marsupialHintTimer = Math.max(0, marsupialHintTimer - dt);
+
     const droneRect = {
       x: DRONE_X - DRONE_WIDTH / 2,
       y: droneY - DRONE_HEIGHT / 2,
@@ -358,8 +538,8 @@
       endGame();
     }
 
-    // Score = distance survived
-    score = Math.floor(elapsed * 10);
+    // Score = distance survived + bonus points from photographing wildlife
+    score = Math.floor(elapsed * 10) + bonusScore;
     scoreEl.textContent = `Score: ${score}`;
   }
 
@@ -371,7 +551,9 @@
       bestEl.textContent = `Best: ${bestScore}`;
     }
     gameOverTitle.textContent =
-      lastHitBy === "eagle" ? "Caught by the eagle!" : "Crashed into a tree!";
+      lastHitBy === "eagle"
+        ? "Oh no - the kite attacked the drone"
+        : "Crashed into a tree!";
     finalScoreEl.textContent = `Score: ${score}`;
     gameOverScreen.classList.remove("hidden");
   }
@@ -395,14 +577,54 @@
     }
   }
 
+  function drawMarsupials() {
+    for (const m of marsupials) {
+      drawPixelSprite(
+        MARSUPIAL_FRAME,
+        m.x,
+        GROUND_Y - MARSUPIAL_HEIGHT,
+        MARSUPIAL_PIXEL,
+        WHITE
+      );
+    }
+  }
+
+  function drawMarsupialHint() {
+    if (marsupialHintTimer <= 0) return;
+    ctx.fillStyle = WHITE;
+    ctx.font = "bold 14px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("Look a marsupial.", WIDTH / 2, 46);
+    ctx.fillText("Take a photo >", WIDTH / 2, 64);
+    ctx.textAlign = "left";
+  }
+
+  function drawPhotoPopup() {
+    if (!photoPopup) return;
+    const alpha = Math.min(1, photoPopup.timer);
+    const riseY = photoPopup.y - (1 - alpha) * 20;
+    ctx.fillStyle = `rgba(242, 242, 242, ${alpha})`;
+    ctx.font = "10px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("+50 PHOTO!", photoPopup.x + MARSUPIAL_WIDTH / 2, riseY);
+    ctx.textAlign = "left";
+  }
+
+  function drawPhotoFlash() {
+    if (photoFlashTimer <= 0) return;
+    const alpha = (photoFlashTimer / 0.25) * 0.6;
+    ctx.fillStyle = `rgba(242, 242, 242, ${alpha})`;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  }
+
   function drawEagle() {
     if (!eagle) return;
-    drawPixelSprite(
-      EAGLE_FRAMES[animFrame],
+    drawBird(
       eagle.x,
       eagle.y - eagle.height / 2,
-      EAGLE_PIXEL,
-      WHITE
+      eagle.width,
+      eagle.height,
+      animFrame === 0
     );
   }
 
@@ -419,10 +641,14 @@
 
   function draw() {
     drawBackground();
+    drawMarsupials();
     drawTrees();
     drawEagle();
     drawDrone();
     drawPilot();
+    drawPhotoPopup();
+    drawPhotoFlash();
+    drawMarsupialHint();
   }
 
   let lastTime = performance.now();
@@ -436,15 +662,34 @@
     requestAnimationFrame(loop);
   }
 
+  function togglePause() {
+    if (state === "playing") {
+      state = "paused";
+      pauseScreen.classList.remove("hidden");
+    } else if (state === "paused") {
+      state = "playing";
+      pauseScreen.classList.add("hidden");
+    }
+  }
+
   // Keyboard input
   window.addEventListener("keydown", (e) => {
     if (e.code === "ArrowUp" || e.code === "KeyW") moveUp = true;
     if (e.code === "ArrowDown" || e.code === "KeyS") moveDown = true;
-    if (e.code === "Space" && state === "gameover") resetGame();
+    if (e.code === "ArrowRight" && !rightPressed) {
+      rightPressed = true;
+      attemptPhoto();
+    }
+    if (e.code === "Space") {
+      e.preventDefault();
+      if (state === "gameover") resetGame();
+      else togglePause();
+    }
   });
   window.addEventListener("keyup", (e) => {
     if (e.code === "ArrowUp" || e.code === "KeyW") moveUp = false;
     if (e.code === "ArrowDown" || e.code === "KeyS") moveDown = false;
+    if (e.code === "ArrowRight") rightPressed = false;
   });
 
   // Touch / mouse input for on-screen tap zones (top = up, bottom = down)

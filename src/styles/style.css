@@ -49,7 +49,7 @@ html, body {
   pointer-events: none;
 }
 
-#game-over-screen {
+.overlay {
   position: absolute;
   inset: 0;
   display: flex;
@@ -62,11 +62,11 @@ html, body {
   padding: 16px;
 }
 
-#game-over-screen.hidden {
+.overlay.hidden {
   display: none;
 }
 
-#game-over-screen h1 {
+.overlay h1 {
   margin: 0;
   font-size: 24px;
   color: #f2f2f2;
