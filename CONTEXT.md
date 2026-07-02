@@ -1,7 +1,7 @@
 # Project Context
 
 # preferences
-- deploy to git hub pages
+- deploy to git hub pages now
 - deploy automatically when we push to main
 - i want it to be used on a computer and mobile
 
